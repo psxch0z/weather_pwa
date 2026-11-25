@@ -123,4 +123,19 @@ async function initWeather() {
     }
 }
 
+function updateNetworkStatus() {
+    const indicator = document.getElementById('network-status');
+    const isOnline = navigator.onLine;
+
+    indicator.textContent = isOnline ? 'Онлайн' : 'Офлайн';
+    indicator.style.color = isOnline ? 'green' : 'crimson';
+}
+
+window.addEventListener('online', async () => {
+    updateNetworkStatus();
+    await initWeather();
+});
+window.addEventListener('offline', updateNetworkStatus);
+
+updateNetworkStatus();
 initWeather();
