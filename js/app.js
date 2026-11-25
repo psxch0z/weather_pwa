@@ -1,32 +1,5 @@
-function saveWeatherToCache(city, data, latitude, longitude, searchText) {
-    try {
-        const cached = {
-            city: city,
-            data: data,
-            savedAt: Date.now(),
-            latitude: latitude,
-            longitude: longitude,
-            searchText: searchText
-        };
-
-        localStorage.setItem('weatherCache', JSON.stringify(cached));
-    } catch (error) {
-        console.error('Не удалось сохранить погоду:', error);
-    }
-}
-
-function getWeatherFromCache() {
-    try {
-        const cached = localStorage.getItem('weatherCache');
-        return cached ? JSON.parse(cached) : null;
-    } catch (error) {
-        console.error('Не удалось прочитать кэш:', error);
-        return null;
-    }
-}
-
-function showCachedWeather() {
-    const cached = getWeatherFromCache();
+async function showCachedWeather() {
+    const cached = await getWeatherFromCache();
 
     if (!cached) {
         return false;
@@ -45,7 +18,7 @@ function showCachedWeather() {
     document.getElementById('status').textContent =
         `Не удалось загрузить свежий прогноз. Показаны данные от ${
             new Date(cached.savedAt).toLocaleString()
-        }.`;
+        }.` + (cached.isStale ? ' Прогнозу больше суток.' : '');
 
     document.getElementById('city').value =
         cached.searchText || cached.city || '';
@@ -53,7 +26,7 @@ function showCachedWeather() {
     return true;
 }
 
-async function loadWeather(latitude, longitude, cityName, searchText = cityName)  {
+async function loadWeather(latitude, longitude, cityName, searchText = cityName) {
     const url =
         `https://api.met.no/weatherapi/locationforecast/2.0/compact?lat=${latitude}&lon=${longitude}`;
 
@@ -65,17 +38,18 @@ async function loadWeather(latitude, longitude, cityName, searchText = cityName)
         }
 
         const data = await response.json();
-        saveWeatherToCache(cityName, data, latitude, longitude, searchText);
-
         const temperature =
             data.properties.timeseries[0].data.instant.details.air_temperature;
+
+        await saveWeatherToCache(cityName, data, latitude, longitude, searchText)
+            .catch(error => console.error('Не удалось сохранить погоду:', error));
 
         document.getElementById('temperature').textContent =
             `Температура в городе ${cityName}: ${temperature} °C`;
 
         document.getElementById('status').textContent = '';
     } catch (error) {
-        if (!showCachedWeather()) {
+        if (!(await showCachedWeather())) {
             document.getElementById('temperature').textContent = '';
             document.getElementById('status').textContent =
                 'Ошибка загрузки, сохранённых данных пока нет.';
@@ -125,7 +99,7 @@ document.getElementById('city-form').addEventListener('submit', async (event) =>
         await loadWeather(location.latitude, location.longitude, location.name, city);
     } catch (error) {
         if (error instanceof TypeError) {
-            if (!showCachedWeather()) {
+            if (!(await showCachedWeather())) {
                 status.textContent =
                     'Нет сети и сохранённых данных пока нет.';
             }
@@ -137,24 +111,16 @@ document.getElementById('city-form').addEventListener('submit', async (event) =>
     }
 });
 
-const cachedWeather = getWeatherFromCache();
+async function initWeather() {
+    const cached = await getWeatherFromCache();
 
-if (cachedWeather) {
-    document.getElementById('city').value =
-        cachedWeather.searchText || cachedWeather.city;
+    if (cached && Number.isFinite(cached.latitude) && Number.isFinite(cached.longitude)) {
+        const searchText = cached.searchText || cached.city;
+        document.getElementById('city').value = searchText;
+        await loadWeather(cached.latitude, cached.longitude, cached.city, searchText);
+    } else {
+        await loadWeather(55.7558, 37.6173, 'Москва');
+    }
 }
 
-if (
-    cachedWeather &&
-    Number.isFinite(cachedWeather.latitude) &&
-    Number.isFinite(cachedWeather.longitude)
-) {
-    loadWeather(
-        cachedWeather.latitude,
-        cachedWeather.longitude,
-        cachedWeather.city,
-        cachedWeather.searchText || cachedWeather.city
-    );
-} else {
-    loadWeather(55.7558, 37.6173, 'Москва');
-}
+initWeather();
